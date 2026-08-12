@@ -17,5 +17,6 @@ Gem::Specification.new do |s|
   s.add_dependency "sqlite3", ">= 2.0"
   s.add_dependency "rack", ">= 2.2"
   s.add_dependency "webrick", ">= 1.8"
+  s.add_dependency "vv-mcb"
   s.add_dependency "rr-grammar"
 end

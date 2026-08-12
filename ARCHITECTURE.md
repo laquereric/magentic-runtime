@@ -63,7 +63,7 @@ Desktop container and a k3s pod are reached the **same way** (they map 1:1). The
 - `immutable/**` -> **read-only** (GET/PROPFIND ok; PUT/DELETE/MKCOL/COPY-dest -> 403)
 - `mutable/**`   -> **read/write**
 
-MCP2 (next) gets read-only immutable + read/write mutable through exactly this policy.
+MCP2 gets read-only immutable + read/write mutable through exactly this policy.
 The `magentic` CLI offers the primitives over the container's WebDAV:
 
 ```
@@ -74,3 +74,19 @@ magentic ls [path] | cp <src> <dst> | rm <path>
 This replaces bespoke fs RPCs (mm-cli `fs_read`/`fs_write`) with the standard. Backup,
 integration, and merge with other code are **not** the container's job -- they happen at
 the cloud/pod level.
+
+## MCP2 stateless facade (the one seam the Cyborg sees)
+
+`Magentic::Runtime::Mcp2` wraps vv-mcb's `Vv::Mcb::Mcp2::Facade`. The AI sees ONE
+stateless tool (`discover` -> one-tool `mm_call` + virtual tools; `invoke` -> never-raise
+envelope, MRTR-mapped). Actions: `run` `approve` `package` (the acts) + `ls` `get` `put`
+`cp` `rm` (WebDAV fs, immutable read-only / mutable read-write). State lives in the
+workspace (WebDAV mutable) + the immutable store, NEVER in the session -- so
+run -> approve -> package is a sequence of self-contained invokes over persisted state.
+The same facade is what the offline-laptop container and the web-online host both expose.
+
+```
+magentic mcp2 discover
+magentic mcp2 invoke run     --input '{"flow":"flows/todo.yaml","out":"/work/mutable/todo"}'
+magentic mcp2 invoke approve --input '{"out":"/work/mutable/todo","approver":"me"}'
+```

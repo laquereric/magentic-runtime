@@ -26,6 +26,7 @@ def opts(argv)
     when "--root" then o[:root] = argv.shift
     when "--port" then o[:port] = argv.shift
     when "--host" then o[:host] = argv.shift
+    when "--input" then o[:input] = argv.shift
     end
   end
   o
@@ -70,11 +71,23 @@ when "rm"
   path = ARGV.shift; abort("usage: magentic rm <path>") unless path
   r = Magentic::Runtime::Dav::Client.new.rm(path); fail_dav(r) unless r[:ok]
   puts "removed #{path}"
+when "mcp2"
+  sub = ARGV.shift
+  if sub == "discover"
+    puts JSON.pretty_generate(Magentic::Runtime.mcp2.discover)
+  elsif sub == "invoke"
+    action = ARGV.shift; o = opts(ARGV)
+    input = JSON.parse(o[:input] || "{}")
+    puts JSON.pretty_generate(Magentic::Runtime.mcp2.invoke(action: action, input: input))
+  else
+    puts "usage: magentic mcp2 discover | magentic mcp2 invoke <action> --input JSON"
+  end
 else
   puts "magentic - governed AI/human flow runtime (The Magentic Stack)"
   puts "  run <flow.yaml> --out DIR     AI proposes -> candidate"
   puts "  approve --out DIR             human promotes -> signed release-packet.json"
   puts "  package --out DIR --image X   -> deployable component"
   puts "  serve --root DIR --port N     serve the workspace over WebDAV (immutable RO / mutable RW)"
+  puts "  mcp2 discover | mcp2 invoke <action> --input JSON   the STATELESS one-tool the Cyborg/AI sees"
   puts "  ls [path] | cp <src> <dst> | rm <path>   fs primitives over the container WebDAV (no volume mounts)"
 end

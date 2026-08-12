@@ -17,6 +17,8 @@ require_relative "runtime/git/workspace"
 require_relative "runtime/dav/policy"
 require_relative "runtime/dav/server"
 require_relative "runtime/dav/client"
+# --- MCP2 stateless facade (the ONE seam the Cyborg/AI sees) ---
+require_relative "runtime/mcp2"
 # --- Composition (orchestrators across layers) ---
 require_relative "runtime/runner"
 require_relative "runtime/approve"
@@ -32,5 +34,6 @@ module Magentic
     def run(flow_path, out_dir:, model: nil) = Runner.new(Flow.load(flow_path), out_dir: out_dir, model_override: model).call
     def approve(out_dir, approver: "local-developer") = Approve.new(out_dir, approver: approver).call
     def package(out_dir, image: nil, port: 3000) = Package.new(out_dir, image: image, port: port).call
+    def mcp2(dav_url: nil) = Mcp2.new(dav_url: dav_url)
   end
 end
