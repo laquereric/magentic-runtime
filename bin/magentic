@@ -10,6 +10,11 @@ def fail_out(r)
   exit 1
 end
 
+def fail_dav(r)
+  warn "DAV error #{r[:code]}: #{r[:because] || r[:reason]}"
+  exit 1
+end
+
 def opts(argv)
   o = {}
   while (a = argv.shift)
@@ -18,6 +23,9 @@ def opts(argv)
     when "--model" then o[:model] = argv.shift
     when "--image" then o[:image] = argv.shift
     when "--approver" then o[:approver] = argv.shift
+    when "--root" then o[:root] = argv.shift
+    when "--port" then o[:port] = argv.shift
+    when "--host" then o[:host] = argv.shift
     end
   end
   o
@@ -30,37 +38,43 @@ when "init"
   FileUtils.mkdir_p(File.join(dir, "flows"))
   FileUtils.cp(File.expand_path("../flows/todo.yaml", __dir__), File.join(dir, "flows", "todo.yaml"))
   puts "wrote #{File.join(dir, 'flows', 'todo.yaml')}"
-  puts "next: magentic run flows/todo.yaml --out ./out"
 when "run"
   flow = ARGV.shift; o = opts(ARGV); out = o[:out] || "./out"
-  abort("usage: magentic run <flow.yaml> [--out DIR] [--model NAME]") unless flow && File.file?(flow)
-  r = Magentic::Runtime.run(flow, out_dir: out, model: o[:model])
-  fail_out(r) unless r[:ok]
+  abort("usage: magentic run <flow.yaml> [--out DIR]") unless flow && File.file?(flow)
+  r = Magentic::Runtime.run(flow, out_dir: out, model: o[:model]); fail_out(r) unless r[:ok]
   puts "OK candidate ready (AI proposed) -- review then approve"
-  puts "  proposal.jsonld  #{File.join(out, 'proposal.jsonld')}   (public preview)"
-  puts "  result.sqlite    #{r[:result_sqlite]}"
+  puts "  proposal.jsonld  #{File.join(out, 'proposal.jsonld')}  (public preview)"
   puts "  next: magentic approve --out #{out}"
 when "approve"
   o = opts(ARGV); out = o[:out] || "./out"
-  r = Magentic::Runtime.approve(out, approver: o[:approver] || "local-developer")
-  fail_out(r) unless r[:ok]
+  r = Magentic::Runtime.approve(out, approver: o[:approver] || "local-developer"); fail_out(r) unless r[:ok]
   puts "OK released (human promoted by #{r[:approved_by]})"
-  puts "  release-packet.json  #{File.join(out, 'release-packet.json')}"
-  puts "  packet_sha256        #{r[:packet_sha256]}"
-  puts "  next: magentic package --out #{out} --image myapp:latest"
+  puts "  release-packet.json  #{File.join(out, 'release-packet.json')}   packet=#{r[:packet_sha256]}"
 when "package"
   o = opts(ARGV); out = o[:out] || "./out"
-  r = Magentic::Runtime.package(out, image: o[:image])
-  fail_out(r) unless r[:ok]
-  puts "OK component packaged"
-  puts "  component.yaml        #{File.join(out, 'component.yaml')}"
-  puts "  image                 #{r[:image]}"
-  puts "  component_digest      #{r[:component_digest]}"
-  puts "  release_packet_digest #{r[:release_packet_digest]}"
+  r = Magentic::Runtime.package(out, image: o[:image]); fail_out(r) unless r[:ok]
+  puts "OK component packaged  image=#{r[:image]}  component_digest=#{r[:component_digest]}"
+when "serve"
+  o = opts(ARGV); root = o[:root] || ENV["MAGENTIC_ROOT"] || "/work"; port = (o[:port] || 4700).to_i
+  puts "magentic WebDAV serving #{root} on port #{port}  (immutable/=read-only, mutable/=read-write)"
+  Magentic::Runtime::Dav::Server.serve(root: root, port: port, host: (o[:host] || "0.0.0.0"))
+when "ls"
+  r = Magentic::Runtime::Dav::Client.new.ls(ARGV[0] || "/"); fail_dav(r) unless r[:ok]
+  r[:entries].each { |e| puts "#{e['dir'] ? 'd' : '-'} #{e['path']}" }
+when "cp"
+  src, dst = ARGV.shift(2)
+  abort("usage: magentic cp <src> <dst>") unless src && dst
+  r = Magentic::Runtime::Dav::Client.new.cp(src, dst); fail_dav(r) unless r[:ok]
+  puts "copied #{src} -> #{dst}"
+when "rm"
+  path = ARGV.shift; abort("usage: magentic rm <path>") unless path
+  r = Magentic::Runtime::Dav::Client.new.rm(path); fail_dav(r) unless r[:ok]
+  puts "removed #{path}"
 else
   puts "magentic - governed AI/human flow runtime (The Magentic Stack)"
-  puts "  magentic run <flow.yaml> --out DIR     AI proposes -> candidate (result.sqlite + proposal.jsonld)"
-  puts "  magentic approve --out DIR             human promotes -> signed release-packet.json"
-  puts "  magentic package --out DIR --image X   -> component.yaml + component_digest (deployable component)"
+  puts "  run <flow.yaml> --out DIR     AI proposes -> candidate"
+  puts "  approve --out DIR             human promotes -> signed release-packet.json"
+  puts "  package --out DIR --image X   -> deployable component"
+  puts "  serve --root DIR --port N     serve the workspace over WebDAV (immutable RO / mutable RW)"
+  puts "  ls [path] | cp <src> <dst> | rm <path>   fs primitives over the container WebDAV (no volume mounts)"
 end
-

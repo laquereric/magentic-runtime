@@ -13,6 +13,10 @@ require_relative "runtime/mutable/medallion"
 require_relative "runtime/mutable/graph_projection"
 # --- Git layer (local code mutations) ---
 require_relative "runtime/git/workspace"
+# --- WebDAV substrate (immutable RO / mutable RW; no volume mounts) ---
+require_relative "runtime/dav/policy"
+require_relative "runtime/dav/server"
+require_relative "runtime/dav/client"
 # --- Composition (orchestrators across layers) ---
 require_relative "runtime/runner"
 require_relative "runtime/approve"

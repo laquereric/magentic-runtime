@@ -52,3 +52,25 @@ over-broad edge grant aborts WITHOUT emitting a projection or packet.
 - **Mutable** is where work happens and changes; it gets its history from **Git**.
 - The **MCP2** facade (next) exposes a single stateless tool over these layers so the
   offline-laptop Cyborg and the web-online Cyborg have the identical AI experience.
+
+## WebDAV substrate (files over HTTP, no volume mounts)
+
+The workspace is reached over **standards-based WebDAV** (an HTTP extension:
+PROPFIND/GET/PUT/DELETE/MKCOL/COPY/MOVE), never a volume mount -- so a local Docker
+Desktop container and a k3s pod are reached the **same way** (they map 1:1). The
+`Dav::Policy` mirrors the Code layers:
+
+- `immutable/**` -> **read-only** (GET/PROPFIND ok; PUT/DELETE/MKCOL/COPY-dest -> 403)
+- `mutable/**`   -> **read/write**
+
+MCP2 (next) gets read-only immutable + read/write mutable through exactly this policy.
+The `magentic` CLI offers the primitives over the container's WebDAV:
+
+```
+magentic serve --root /work --port 4700   # the container serves its workspace (default CMD)
+magentic ls [path] | cp <src> <dst> | rm <path>
+```
+
+This replaces bespoke fs RPCs (mm-cli `fs_read`/`fs_write`) with the standard. Backup,
+integration, and merge with other code are **not** the container's job -- they happen at
+the cloud/pod level.

@@ -8,6 +8,8 @@ COPY . /app
 # In the image, resolve rr-grammar from git (the ../rr-grammar path dep is local-dev only).
 RUN printf 'source "https://rubygems.org"\ngemspec\ngem "rr-grammar", git: "https://github.com/laquereric/rr-grammar.git"\n' > Gemfile && \
     bundle install
-VOLUME /work
+EXPOSE 4700
+ENV MAGENTIC_ROOT=/work
 ENTRYPOINT ["bundle", "exec", "magentic"]
-CMD ["run", "flows/todo.yaml", "--out", "/work"]
+# Default: serve the workspace over WebDAV (no volume mount; local container == k3s pod).
+CMD ["serve", "--root", "/work", "--port", "4700"]
