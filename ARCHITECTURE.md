@@ -90,3 +90,27 @@ magentic mcp2 discover
 magentic mcp2 invoke run     --input '{"flow":"flows/todo.yaml","out":"/work/mutable/todo"}'
 magentic mcp2 invoke approve --input '{"out":"/work/mutable/todo","approver":"me"}'
 ```
+
+## Identity seam: Active Pod Context + delegate ceiling
+
+Every MCP2 request binds to an **Active Pod Context** (AdrCyborgPodRoles) -- the mandatory,
+visible tuple:
+
+```
+Cyborg Pod ID | immutable Release SHA | workspace revision | principal[/ delegate]
+```
+
+It carries TWO identities: the **principal** (the human) and, when an AI acts for the
+human, the **delegate**. `PodContext#allows?` enforces the human's authority CEILING: a
+delegate may invoke only its `delegated` action set -- anything else is refused
+(`delegated_denied`) before dispatch. `discover` is filtered to the same ceiling. A
+principal acting directly has no ceiling. The default is a LOCAL context labeled
+"local checkpoint -- not durable" until promoted to a real POD. Every discover/invoke
+result echoes `active_pod_context`, so the tuple is always visible -- the one control
+against split-brain authority. An invocation binds exactly ONE context; contexts never combine.
+
+```
+magentic mcp2 invoke run --input '{...}' \
+  --pod pod-alice --principal Human:alice --delegate AI:sess-1 --delegated run,ls,get \
+  --release sha256:core --rev rev-7
+```
