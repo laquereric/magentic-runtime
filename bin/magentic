@@ -26,6 +26,7 @@ def opts(argv)
     when "--delegated" then o[:delegated] = argv.shift
     when "--release" then o[:release] = argv.shift
     when "--rev" then o[:rev] = argv.shift
+    when "--pod-url" then o[:pod_url] = argv.shift
     end
   end
   o
@@ -73,6 +74,11 @@ when "cp"
 when "rm"
   path = ARGV.shift; abort("usage: magentic rm <path>") unless path
   r = Magentic::Runtime::Dav::Client.new.rm(path); fail_dav(r) unless r[:ok]; puts "removed #{path}"
+when "promote"
+  o = opts(ARGV); out = o[:out] || "./out"; pod = o[:pod] || "pod-local"
+  r = Magentic::Runtime.promote(out, pod_id: pod, pod_url: (o[:pod_url] || ENV["MAGENTIC_POD_URL"]))
+  fail_out(r) unless r[:ok]
+  puts "OK promoted #{out} -> #{pod} via TrustLadder plugin gateway (gated=#{r[:gated]} egressed=#{r[:egressed]})"
 when "mcp2"
   sub = ARGV.shift
   action = (sub == "invoke") ? ARGV.shift : nil
@@ -91,5 +97,6 @@ else
   puts "  run/approve/package --out DIR         the governed flow acts"
   puts "  serve --root DIR --port N             serve the workspace over WebDAV (immutable RO / mutable RW)"
   puts "  ls|cp|rm ...                          fs primitives over the container WebDAV (no volume mounts)"
+  puts "  promote --out DIR --pod POD [--pod-url URL]   container -> plugin gateway -> POD (never direct)"
   puts "  mcp2 discover | mcp2 invoke <action>  the STATELESS one-tool the Cyborg sees (binds an Active Pod Context)"
 end

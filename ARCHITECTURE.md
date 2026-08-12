@@ -114,3 +114,21 @@ magentic mcp2 invoke run --input '{...}' \
   --pod pod-alice --principal Human:alice --delegate AI:sess-1 --delegated run,ls,get \
   --release sha256:core --rev rev-7
 ```
+
+## Egress: container -> plugin gateway -> POD (the plugin is the sole egress)
+
+The container has NO direct cloud egress (AdrCyborgPodRoles). Every promotion goes
+container -> TrustLadder **plugin gateway** -> POD, and the boundary is RE-ENFORCED on
+egress before anything reaches the POD:
+
+- `Egress::ContainerClient` holds ONLY a `PluginGateway` (never a POD client) -- structurally
+  it cannot reach the POD except through the plugin.
+- `Egress::PluginGateway` (the plugin's role) gates every promotion: packet integrity
+  (not tampered since approval) + edge-grant public-only + packaged & bound to the OCI image.
+  Fail-closed -- a promotion that does not pass NEVER reaches the POD.
+- `Egress::PodClient` (Http | Echo) is the POD wire; only the gateway holds one.
+
+```
+magentic promote --out DIR --pod POD [--pod-url URL]
+# container -> plugin gateway (TrustLadder re-check) -> POD (mmg-k3s submit_revision)
+```
