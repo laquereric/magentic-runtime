@@ -1,0 +1,23 @@
+flow_id: magentic-todo
+model: stub
+brief: "Turn this into a public todo: Ship the v1 release of the Magentic runtime."
+resource:
+  id: todo
+  fields:
+    - { name: id, type: uuid, primary_key: true, data_class: public }
+    - { name: public_id, type: string, required: true, data_class: public }
+    - { name: title, type: string, required: true, data_class: public }
+    - { name: private_note, type: text, data_class: private }
+    - { name: completed, type: boolean, required: true, data_class: public }
+  semantic_projection:
+    subject_iri_template: "urn:mm:todo:{public_id}"
+    rdf_class: "urn:mm:Todo"
+    context: { schema: "https://schema.org/" }
+    predicates:
+      title: { iri: "https://schema.org/name" }
+      completed: { iri: "urn:mm:field/completed" }
+      public_id: { iri: "urn:mm:field/public_id" }
+promote:
+  field: title
+edge_grant:
+  fields: [public_id, title, completed]

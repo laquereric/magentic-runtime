@@ -1,0 +1,6 @@
+/out/
+*.sqlite
+Gemfile.lock
+.bundle/
+vendor/bundle
+tmp/

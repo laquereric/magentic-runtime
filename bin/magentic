@@ -1,0 +1,45 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+require "magentic/runtime"
+require "json"
+require "fileutils"
+
+cmd = ARGV.shift
+case cmd
+when "init"
+  dir = ARGV[0] || "."
+  FileUtils.mkdir_p(File.join(dir, "flows"))
+  src = File.expand_path("../flows/todo.yaml", __dir__)
+  dst = File.join(dir, "flows", "todo.yaml")
+  FileUtils.cp(src, dst)
+  puts "wrote #{dst}"
+  puts "next: magentic run #{dst} --out ./out"
+when "run"
+  flow = ARGV.shift
+  out = "./out"
+  model = nil
+  while (a = ARGV.shift)
+    out = ARGV.shift if a == "--out"
+    model = ARGV.shift if a == "--model"
+  end
+  abort("usage: magentic run <flow.yaml> [--out DIR] [--model NAME]") unless flow && File.file?(flow)
+  r = Magentic::Runtime.run(flow, out_dir: out, model: model)
+  if r[:ok]
+    puts "OK governed run complete"
+    puts "  result.sqlite            #{r[:result_sqlite]}"
+    puts "  proposal.jsonld          #{File.join(out, 'proposal.jsonld')}"
+    puts "  release-packet.json      #{File.join(out, 'release-packet.json')}"
+    puts "  contract_set_digest      #{r[:contract_set_digest]}"
+    puts "  public_projection_digest #{r[:public_projection_digest]}"
+    puts "  packet_sha256            #{r[:packet_sha256]}"
+  else
+    warn "REFUSED (#{r[:reason]}): #{r[:because]}"
+    exit 1
+  end
+else
+  puts "magentic - governed AI/human flow runtime (The Magentic Stack)"
+  puts "usage:"
+  puts "  magentic init [dir]                       scaffold flows/todo.yaml"
+  puts "  magentic run <flow.yaml> [--out DIR]      run a governed flow -> result.sqlite + proposal.jsonld + release-packet.json"
+end
