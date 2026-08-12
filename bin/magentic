@@ -5,41 +5,62 @@ require "magentic/runtime"
 require "json"
 require "fileutils"
 
+def fail_out(r)
+  warn "REFUSED (#{r[:reason]}): #{r[:because]}"
+  exit 1
+end
+
+def opts(argv)
+  o = {}
+  while (a = argv.shift)
+    case a
+    when "--out" then o[:out] = argv.shift
+    when "--model" then o[:model] = argv.shift
+    when "--image" then o[:image] = argv.shift
+    when "--approver" then o[:approver] = argv.shift
+    end
+  end
+  o
+end
+
 cmd = ARGV.shift
 case cmd
 when "init"
   dir = ARGV[0] || "."
   FileUtils.mkdir_p(File.join(dir, "flows"))
-  src = File.expand_path("../flows/todo.yaml", __dir__)
-  dst = File.join(dir, "flows", "todo.yaml")
-  FileUtils.cp(src, dst)
-  puts "wrote #{dst}"
-  puts "next: magentic run #{dst} --out ./out"
+  FileUtils.cp(File.expand_path("../flows/todo.yaml", __dir__), File.join(dir, "flows", "todo.yaml"))
+  puts "wrote #{File.join(dir, 'flows', 'todo.yaml')}"
+  puts "next: magentic run flows/todo.yaml --out ./out"
 when "run"
-  flow = ARGV.shift
-  out = "./out"
-  model = nil
-  while (a = ARGV.shift)
-    out = ARGV.shift if a == "--out"
-    model = ARGV.shift if a == "--model"
-  end
+  flow = ARGV.shift; o = opts(ARGV); out = o[:out] || "./out"
   abort("usage: magentic run <flow.yaml> [--out DIR] [--model NAME]") unless flow && File.file?(flow)
-  r = Magentic::Runtime.run(flow, out_dir: out, model: model)
-  if r[:ok]
-    puts "OK governed run complete"
-    puts "  result.sqlite            #{r[:result_sqlite]}"
-    puts "  proposal.jsonld          #{File.join(out, 'proposal.jsonld')}"
-    puts "  release-packet.json      #{File.join(out, 'release-packet.json')}"
-    puts "  contract_set_digest      #{r[:contract_set_digest]}"
-    puts "  public_projection_digest #{r[:public_projection_digest]}"
-    puts "  packet_sha256            #{r[:packet_sha256]}"
-  else
-    warn "REFUSED (#{r[:reason]}): #{r[:because]}"
-    exit 1
-  end
+  r = Magentic::Runtime.run(flow, out_dir: out, model: o[:model])
+  fail_out(r) unless r[:ok]
+  puts "OK candidate ready (AI proposed) -- review then approve"
+  puts "  proposal.jsonld  #{File.join(out, 'proposal.jsonld')}   (public preview)"
+  puts "  result.sqlite    #{r[:result_sqlite]}"
+  puts "  next: magentic approve --out #{out}"
+when "approve"
+  o = opts(ARGV); out = o[:out] || "./out"
+  r = Magentic::Runtime.approve(out, approver: o[:approver] || "local-developer")
+  fail_out(r) unless r[:ok]
+  puts "OK released (human promoted by #{r[:approved_by]})"
+  puts "  release-packet.json  #{File.join(out, 'release-packet.json')}"
+  puts "  packet_sha256        #{r[:packet_sha256]}"
+  puts "  next: magentic package --out #{out} --image myapp:latest"
+when "package"
+  o = opts(ARGV); out = o[:out] || "./out"
+  r = Magentic::Runtime.package(out, image: o[:image])
+  fail_out(r) unless r[:ok]
+  puts "OK component packaged"
+  puts "  component.yaml        #{File.join(out, 'component.yaml')}"
+  puts "  image                 #{r[:image]}"
+  puts "  component_digest      #{r[:component_digest]}"
+  puts "  release_packet_digest #{r[:release_packet_digest]}"
 else
   puts "magentic - governed AI/human flow runtime (The Magentic Stack)"
-  puts "usage:"
-  puts "  magentic init [dir]                       scaffold flows/todo.yaml"
-  puts "  magentic run <flow.yaml> [--out DIR]      run a governed flow -> result.sqlite + proposal.jsonld + release-packet.json"
+  puts "  magentic run <flow.yaml> --out DIR     AI proposes -> candidate (result.sqlite + proposal.jsonld)"
+  puts "  magentic approve --out DIR             human promotes -> signed release-packet.json"
+  puts "  magentic package --out DIR --image X   -> component.yaml + component_digest (deployable component)"
 end
+
