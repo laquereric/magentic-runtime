@@ -3,10 +3,8 @@ require "json"
 
 module Magentic
   module Runtime
-    # Stage 2 -- APPROVE (the human promotes). Re-opens the persisted result.sqlite,
-    # RE-READS the cited SQL evidence, transitions the claim validated -> accepted,
-    # projects the public JSON-LD, runs the canary, and SIGNS the Release Packet with
-    # the developer's local key. AI proposed; only this explicit human act releases.
+    # APPROVE (human promotes). Medallion GOLD (re-read persisted SQL + accept) -> graph
+    # projection -> explicit TrustLadder grant check -> sign the Immutable Release Packet.
     class Approve
       def initialize(out_dir, approver: "local-developer")
         @out = out_dir.to_s
@@ -14,45 +12,39 @@ module Magentic
       end
 
       def call
-        cand_path = File.join(@out, "candidate.json")
-        return refuse(:no_candidate, "run first: #{cand_path} missing") unless File.file?(cand_path)
-        cand = JSON.parse(File.read(cand_path))
+        cp = File.join(@out, "candidate.json")
+        return refuse(:no_candidate, "run first: candidate.json missing") unless File.file?(cp)
+        cand = JSON.parse(File.read(cp))
         res = cand["resource"]
+        db = File.join(@out, "result.sqlite")
+        return refuse(:evidence_gone, "result.sqlite missing") unless File.file?(db)
 
-        db_path = File.join(@out, "result.sqlite")
-        return refuse(:evidence_gone, "result.sqlite missing") unless File.file?(db_path)
-        store = SqliteStore.new(db_path)
-        row = store.fetch_row(cand["table"], cand.dig("proposal", "evidence", "row_id"))
-        return refuse(:evidence_gone, "cited SQL row not found at approval time") unless row
-
-        # Human promotion: gate re-reads SQL evidence again and accepts.
-        gate = RR::Grammar::PromotionGate.new(sql_reader: store, claim_store: RR::Grammar::ClaimStore.new,
-                                              contract: res, require_approval: false)
-        gres = gate.submit(cand["proposal"])
-        return refuse(:promotion_rejected, gres[:because] || gres[:reason].to_s) unless gres[:ok]
-
-        gp = Govern.projection(res, row, cand["private_fields"])
-        return refuse(gp[:reason], gp[:because]) unless gp[:ok]
+        store = Mutable::Store.new(db)
+        flow = Flow.new("flow_id" => cand["flow_id"], "resource" => res, "edge_grant" => cand["edge_grant"],
+                        "promote" => { "field" => cand["promote_field"] }, "model" => "stub", "brief" => "")
+        med = Mutable::Medallion.new(flow, store)
+        g = med.gold(cand["proposal"])         # GOLD: human promotion (re-reads SQL, accepts)
+        return g unless g[:ok]
+        gp = Mutable::GraphProjection.of(res, g[:row], cand["private_fields"])
+        return gp unless gp[:ok]
+        tl = Immutable::TrustLadder.enforce_grant(cand["edge_grant"], cand["public_fields"])
+        return refuse(tl[:reason], tl[:because]) unless tl[:ok]
 
         evidence_root = {
-          "approved_by" => @approver,
-          "claim_id" => gres[:claim_id],
-          "semantic_digests" => gp[:compiled][:digests],
-          "cited" => cand.dig("proposal", "evidence", "content_hashes")
+          "approved_by" => @approver, "claim_id" => g[:claim_id],
+          "semantic_digests" => gp[:compiled][:digests], "cited" => cand.dig("proposal", "evidence", "content_hashes")
         }
-        packet = RR::Grammar::ReleasePacket.build(
+        packet = Immutable::ReleasePacket.build(
           flow_id: cand["flow_id"], component_digest: "sha256:PENDING",
-          contract_set: Govern.contract_set(res), projection: gp[:projection],
-          evidence: evidence_root, edge_grant: cand["edge_grant"],
-          public_fields: cand["public_fields"], revision_id: nil
+          contract_set: Immutable::Grammar.contract_set(res), projection: gp[:projection],
+          evidence: evidence_root, edge_grant: cand["edge_grant"], public_fields: cand["public_fields"], revision_id: nil
         )
         return refuse(:packet_refused, packet[:because] || packet[:reason].to_s) unless packet[:ok]
 
-        write("approval.json", JSON.pretty_generate("approved_by" => @approver, "decision" => "approved", "claim_id" => gres[:claim_id]))
-        write("claim.json", JSON.pretty_generate("claim_id" => gres[:claim_id], "state" => gres[:state]))
+        write("approval.json", JSON.pretty_generate("approved_by" => @approver, "decision" => "approved", "claim_id" => g[:claim_id]))
+        write("claim.json", JSON.pretty_generate("claim_id" => g[:claim_id], "state" => g[:state]))
         write("release-packet.json", JSON.pretty_generate(packet[:packet]))
-
-        { ok: true, out_dir: @out, approved_by: @approver, claim_id: gres[:claim_id],
+        { ok: true, out_dir: @out, approved_by: @approver, claim_id: g[:claim_id],
           packet_sha256: packet[:packet_sha256],
           public_projection_digest: packet[:packet]["body"]["public_projection_digest"] }
       rescue StandardError => e

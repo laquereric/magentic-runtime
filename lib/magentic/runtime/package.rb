@@ -34,7 +34,7 @@ module Magentic
         }
         component_digest = "sha256:" + Digest::SHA256.hexdigest(RR::Grammar::CanonicalJson.dump(component))
 
-        resealed = RR::Grammar::ReleasePacket.reseal(pkt, component_digest: component_digest)
+        resealed = Immutable::ReleasePacket.reseal(pkt, component_digest: component_digest)
         return refuse(:reseal_failed, resealed[:because]) unless resealed[:ok]
         component["release_packet_digest"] = resealed[:packet_sha256]
 

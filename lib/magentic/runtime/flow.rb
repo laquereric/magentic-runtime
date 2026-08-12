@@ -29,6 +29,10 @@ module Magentic
       def public_fields = fields.select { |f| f["data_class"].to_s == "public" && !f["primary_key"] }.map { |f| f["name"].to_s }
       def private_fields = fields.select { |f| f["data_class"].to_s == "private" }.map { |f| f["name"].to_s }
       def predicates = (@resource["semantic_projection"] || {})["predicates"] || {}
+      def pk_name
+        f = fields.find { |x| x["primary_key"] }
+        f ? f["name"].to_s : "id"
+      end
       def promote_iri = (predicates[@promote_field] || {})["iri"].to_s
 
       private
